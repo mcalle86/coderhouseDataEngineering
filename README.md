@@ -9,4 +9,4 @@ Repositorio de entregables del curso Data Engineering comision 55990
 
 ## Avance del proyecto
 Se crean los script de conexión a la DB data-engineer-database y obtencion de datos a partir de la API https://random-data-api.com/api/v2/beers la cual devuelve un registro el cual contiene una variedad de cerveza artesanal y sus datos técnicos.
-Los datos de porcentaje,IBU y Blg se transforman a números para poder insertarlos en la tabla y que puedan ser utilizados con funciones.
+Los datos de porcentaje, IBU y Blg se transforman a números para poder insertarlos en la tabla y que puedan ser utilizados con funciones.
