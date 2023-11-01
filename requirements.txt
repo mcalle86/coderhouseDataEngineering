@@ -1,9 +1,4 @@
-alchemy==20.5
-idna==2.8
-matplotlib==3.8.0
-numpy==1.25.2
-pandas==2.1.0
-psycopg2==2.9.3
-redshift-connector==2.0.914
-SQLAlchemy==1.4.49
-sqlalchemy-redshift==0.8.14
+alchemy
+pandas
+psycopg2
+sqlalchemy-redshift

@@ -1,4 +1,3 @@
-import redshift_connector
 import configparser
 from sqlalchemy import create_engine
 
@@ -34,5 +33,3 @@ def connRedshiftAlchemy():
         return conn
     except Exception as e:
         raise Exception(e)
-
-#print(type(connRedshiftAlchemy()))

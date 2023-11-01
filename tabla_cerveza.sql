@@ -1,4 +1,4 @@
-CREATE TABLE marcocalle86_coderhouse.cerveza (
+CREATE TABLE if not exists marcocalle86_coderhouse.cerveza (
    id int not null PRIMARY KEY
    ,marca varchar(40) NULL
    ,nombre varchar(40) NULL

@@ -1,5 +1,7 @@
-import conect,requests
+import conect,requests,sqlalchemy
 import pandas as pd
+import warnings
+warnings.filterwarnings("ignore")
 
 #funcion para obtener registros de tipos de cerveza que se comercializan y sus caracteristicas
 #Se setea payload = {'size': 4} para recibir 4 registros de la API
@@ -9,7 +11,7 @@ def getbeer():
     headers = {"Content-Type":"application/json"}
     response = requests.request("GET", url, headers=headers, params=payload)
     registros = response.json()
-    print(registros)
+    #print(registros)
     return registros
 
 def procesarDatos():
@@ -25,9 +27,9 @@ def procesarDatos():
                 ,{'id': 7181, 'uid': '98f4f80f-db7f-4e29-8252-89cfa8fefcb2', 'brand': 'Kirin', 'name': 'Edmund Fitzgerald Porter', 'style': 'English Pale Ale', 'hop': 'Mosaic', 'yeast': '1332 - Northwest Ale', 'malts': 'Munich', 'ibu': '89 IBU', 'alcohol': '7.8%', 'blg': '11.1°Blg'}
                 ,{'id': 3730, 'uid': 'f1b631cd-27c5-45d5-97e1-98a4af6e1f91', 'brand': 'Sierra Nevada', 'name': 'Double Bastard Ale', 'style': 'Vegetable Beer', 'hop': 'Chinook', 'yeast': '3763 - Roeselare Ale Blend', 'malts': 'Black malt', 'ibu': '85 IBU', 'alcohol': '3.4%', 'blg': '13.6°Blg'}]
     
-
     # Los datos obtenidos de la API se conviertene en diccionarios que se pueden convertir 
     # en Dataframe sin realizar ningun proceso adicional
+    
     df = pd.DataFrame(convertir)
 
     #Elimino columna con datos que no serán insertados en la tabla de redshift
@@ -49,26 +51,48 @@ def procesarDatos():
                                               'ibu':'amargor'})
     return p1
 
+print('1 - Iniciar conexión con la DB en Redshift')
 conn_engine = conect.connRedshiftAlchemy()
+conn_engine.execution_options(isolation_level="AUTOCOMMIT")
+
+print('2 - Obtener datos de la API')
 dft = procesarDatos()
-#print(dft)
 
 #Vuelco los datos en una tabla staging que se usará para identificar datos duplicados en la tabla de redshift
 # se utiliza if_exists='replace' para que se borren los datos en la siguiente ejecución
 #Redshift ya no soporta ON CONFLIC ni upsert para evitar los registros duplicados que se vayan a insertar
+#Utilizo dtype para definir el tamaño y tipo de los campos de la tabla staging
+#para que coincida con lo definido en la tabla cerveza.
+print('3 - Iniciando volcado de datos en tabla staging')
 dft.to_sql(name='staging'
            ,con=conn_engine
            ,schema='marcocalle86_coderhouse'
            ,if_exists='replace'
-           ,index=False)
+           ,index=False
+           ,dtype={'id': sqlalchemy.types.INTEGER()
+                    ,'marca': sqlalchemy.types.VARCHAR(50)
+                    ,'nombre': sqlalchemy.types.VARCHAR(50)
+                    ,'estilo': sqlalchemy.types.VARCHAR(50)
+                    ,'lupulo': sqlalchemy.types.VARCHAR(50)
+                    ,'levadura': sqlalchemy.types.VARCHAR(50)
+                    ,'malta': sqlalchemy.types.VARCHAR(40)
+                    ,'amargor': sqlalchemy.types.INTEGER()
+                    ,'alcohol': sqlalchemy.types.Numeric(4,2)
+                    ,'blg': sqlalchemy.types.Numeric(4,2)})
 
-#borro registros duplicados
-conn_engine.execute("""DELETE FROM  marcocalle86_coderhouse.cerveza
-                    USING marcocalle86_coderhouse.staging
-                    WHERE cerveza.id = staging.id""")
+
 
 #Inserto los registros nuevos en la tabla final 
+print('4 - Identificar datos unicos')
+print('5 - Insertando datos en tabla cerveza')
 conn_engine.execute("""INSERT INTO marcocalle86_coderhouse.cerveza
-                    SELECT * FROM marcocalle86_coderhouse.staging""")
+                    SELECT st.id, st.marca, st.nombre, st.estilo, st.lupulo, st.levadura, st.malta, st.amargor, st.alcohol, st.blg
+                    FROM marcocalle86_coderhouse.staging AS st
+                    LEFT JOIN marcocalle86_coderhouse.cerveza AS cv on st.id = cv.id
+                    WHERE cv.id is NULL""")
+
+#Borro la tabla staging para liberar espacio en disco
+print('6 - Borrado de tabla staging')
+conn_engine.execute("""DROP TABLE marcocalle86_coderhouse.staging""")
 
 
