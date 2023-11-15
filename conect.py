@@ -1,33 +1,13 @@
-import configparser
+import os
 from sqlalchemy import create_engine
-
-def leerConfiguracion():
-    config = configparser.ConfigParser()
-    config.read('config.ini')
-    return {'servidor': config['REDSHIFT']['servidor'],
-            'db': config['REDSHIFT']['db'],
-            'puerto': config['REDSHIFT']['puerto'],
-            'usuario': config['REDSHIFT']['usuario'],
-            'clave': config['REDSHIFT']['clave']}
-
-# def conexionRedshift():
-#     #leer configuración
-#     config = leerConfiguracion()
-#     try:
-#         conn = redshift_connector.connect(
-#             host = config['servidor'],
-#             database = config['db'],
-#             port = config['puerto'],
-#             user = config['usuario'],
-#             password = config['clave'])
-#         #print(type(conn))
-#         return conn
-#     except Exception as e:
-#         raise Exception(e)
 
 def connRedshiftAlchemy():
     #leer configuración
-    config = leerConfiguracion()
+    config = {'servidor': os.environ.get("SERVIDOR_REDSHIFT"),
+            'db': os.environ.get("DB_REDSHIFT"),
+            'puerto': os.environ.get("PUERTO_REDSHIFT"),
+            'usuario': os.environ.get("USUARIO_REDSHIFT"),
+            'clave': os.environ.get("CLAVE_REDSHIFT")}
     try:
         conn = create_engine( f"""redshift+psycopg2://{config['usuario']}:{config['clave']}@{config['servidor']}:{config['puerto']}/{config['db']}""")
         return conn

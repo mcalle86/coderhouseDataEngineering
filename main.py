@@ -1,4 +1,4 @@
-import conect,requests,sqlalchemy
+import conect,requests,sqlalchemy,os
 import pandas as pd
 import warnings
 warnings.filterwarnings("ignore")
@@ -7,7 +7,7 @@ warnings.filterwarnings("ignore")
 #Se setea payload = {'size': 4} para recibir 4 registros de la API
 def getbeer():
     url = "https://random-data-api.com/api/v2/beers"
-    payload = {'size': 4}
+    payload = {'size': os.environ.get("SIZER")}
     headers = {"Content-Type":"application/json"}
     response = requests.request("GET", url, headers=headers, params=payload)
     registros = response.json()
@@ -51,48 +51,61 @@ def procesarDatos():
                                               'ibu':'amargor'})
     return p1
 
-print('1 - Iniciar conexión con la DB en Redshift')
-conn_engine = conect.connRedshiftAlchemy()
-conn_engine.execution_options(isolation_level="AUTOCOMMIT")
+try: 
+    try:
+        print('1 - Intentando obtener datos de la API')
+        dft = procesarDatos()
+    except:
+        raise Exception(1)
+    #Vuelco los datos en una tabla staging que se usará para identificar datos duplicados en la tabla de redshift
+    # se utiliza if_exists='replace' para que se borren los datos en la siguiente ejecución
+    #Redshift ya no soporta ON CONFLIC ni upsert para evitar los registros duplicados que se vayan a insertar
+    #Utilizo dtype para definir el tamaño y tipo de los campos de la tabla staging
+    #para que coincida con lo definido en la tabla cerveza.
+    try:
+        print('2 - Iniciar conexión con la DB en Redshift')
+        conn_engine = conect.connRedshiftAlchemy()
+        conn_engine.execution_options(isolation_level="AUTOCOMMIT")
+        conn_engine.execute('SELECT version();')
+    except:
+        raise Exception(2)
+    try:
+        print('3 - Iniciando volcado de datos en tabla staging')
+        dft.to_sql(name='staging'
+                ,con=conn_engine
+                ,schema='marcocalle86_coderhouse'
+                ,if_exists='replace'
+                ,index=False
+                ,dtype={'id': sqlalchemy.types.INTEGER()
+                            ,'marca': sqlalchemy.types.VARCHAR(50)
+                            ,'nombre': sqlalchemy.types.VARCHAR(50)
+                            ,'estilo': sqlalchemy.types.VARCHAR(50)
+                            ,'lupulo': sqlalchemy.types.VARCHAR(50)
+                            ,'levadura': sqlalchemy.types.VARCHAR(50)
+                            ,'malta': sqlalchemy.types.VARCHAR(40)
+                            ,'amargor': sqlalchemy.types.INTEGER()
+                            ,'alcohol': sqlalchemy.types.Numeric(4,2)
+                            ,'blg': sqlalchemy.types.Numeric(4,2)})
+    except:
+        raise Exception(3)
+    try:    
+        #Inserto los registros nuevos en la tabla final 
+        print('4 - Identificar datos unicos e insertar en tabla cerveza')
+        conn_engine.execute("""INSERT INTO marcocalle86_coderhouse.cerveza
+                            SELECT st.id, st.marca, st.nombre, st.estilo, st.lupulo, st.levadura, st.malta, st.amargor, st.alcohol, st.blg
+                            FROM marcocalle86_coderhouse.staging AS st
+                            LEFT JOIN marcocalle86_coderhouse.cerveza AS cv on st.id = cv.id
+                            WHERE cv.id is NULL""")
+    except:
+        raise Exception(4)
+    #Borro la tabla staging para liberar espacio en disco
+    try:
+        print('5 - Borrado de tabla staging')
+        conn_engine.execute("""DROP TABLE marcocalle86_coderhouse.staging""")
+    except:
+        raise Exception(5)
 
-print('2 - Obtener datos de la API')
-dft = procesarDatos()
-
-#Vuelco los datos en una tabla staging que se usará para identificar datos duplicados en la tabla de redshift
-# se utiliza if_exists='replace' para que se borren los datos en la siguiente ejecución
-#Redshift ya no soporta ON CONFLIC ni upsert para evitar los registros duplicados que se vayan a insertar
-#Utilizo dtype para definir el tamaño y tipo de los campos de la tabla staging
-#para que coincida con lo definido en la tabla cerveza.
-print('3 - Iniciando volcado de datos en tabla staging')
-dft.to_sql(name='staging'
-           ,con=conn_engine
-           ,schema='marcocalle86_coderhouse'
-           ,if_exists='replace'
-           ,index=False
-           ,dtype={'id': sqlalchemy.types.INTEGER()
-                    ,'marca': sqlalchemy.types.VARCHAR(50)
-                    ,'nombre': sqlalchemy.types.VARCHAR(50)
-                    ,'estilo': sqlalchemy.types.VARCHAR(50)
-                    ,'lupulo': sqlalchemy.types.VARCHAR(50)
-                    ,'levadura': sqlalchemy.types.VARCHAR(50)
-                    ,'malta': sqlalchemy.types.VARCHAR(40)
-                    ,'amargor': sqlalchemy.types.INTEGER()
-                    ,'alcohol': sqlalchemy.types.Numeric(4,2)
-                    ,'blg': sqlalchemy.types.Numeric(4,2)})
-
-
-
-#Inserto los registros nuevos en la tabla final 
-print('4 - Identificar datos unicos')
-print('5 - Insertando datos en tabla cerveza')
-conn_engine.execute("""INSERT INTO marcocalle86_coderhouse.cerveza
-                    SELECT st.id, st.marca, st.nombre, st.estilo, st.lupulo, st.levadura, st.malta, st.amargor, st.alcohol, st.blg
-                    FROM marcocalle86_coderhouse.staging AS st
-                    LEFT JOIN marcocalle86_coderhouse.cerveza AS cv on st.id = cv.id
-                    WHERE cv.id is NULL""")
-
-#Borro la tabla staging para liberar espacio en disco
-print('6 - Borrado de tabla staging')
-conn_engine.execute("""DROP TABLE marcocalle86_coderhouse.staging""")
-
+    print(0)
+except Exception as e:
+    print(e)
 
